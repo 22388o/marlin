@@ -1,15 +1,16 @@
 use crate::{
-    ahp::{CryptographicSpongeVarNonNative, CryptographicSpongeWithDefault},
     constraints::ahp::AHPForR1CS,
     constraints::data_structures::{IndexVerifierKeyVar, PreparedIndexVerifierKeyVar, ProofVar},
-    Error, PhantomData, PrimeField, String, Vec,
+    sponge::CryptographicSpongeVarNonNative,
+    CryptographicSpongeParameters, CryptographicSpongeWithRate, Error, PhantomData, PrimeField,
+    String, Vec,
 };
 use ark_nonnative_field::NonNativeFieldVar;
 use ark_poly::univariate::DensePolynomial;
 use ark_poly_commit::{PCCheckRandomDataVar, PCCheckVar, PolynomialCommitment};
 use ark_r1cs_std::{bits::boolean::Boolean, fields::FieldVar, R1CSVar, ToConstraintFieldGadget};
 use ark_relations::ns;
-use ark_sponge::{Absorb, CryptographicSponge};
+use ark_sponge::{constraints::CryptographicSpongeVar, Absorb, CryptographicSponge};
 
 pub struct Marlin<
     F: PrimeField,
@@ -29,11 +30,12 @@ impl<F, CF, S, PC, PCG> Marlin<F, CF, S, PC, PCG>
 where
     F: PrimeField,
     CF: PrimeField + Absorb,
-    S: CryptographicSpongeWithDefault,
+    S: CryptographicSpongeWithRate,
     PC: PolynomialCommitment<F, DensePolynomial<F>, S>,
     PCG: PCCheckVar<F, DensePolynomial<F>, PC, CF, S>,
     PCG::VerifierKeyVar: ToConstraintFieldGadget<CF>,
     PCG::CommitmentVar: ToConstraintFieldGadget<CF>,
+    <S as CryptographicSponge>::Parameters: CryptographicSpongeParameters,
 {
     pub const PROTOCOL_NAME: &'static [u8] = b"MARLIN-2019";
 
@@ -43,7 +45,10 @@ where
         index_pvk: &PreparedIndexVerifierKeyVar<F, CF, S, SVN, PC, PCG>,
         public_input: &[NonNativeFieldVar<F, CF>],
         proof: &ProofVar<F, CF, S, PC, PCG>,
-    ) -> Result<Boolean<CF>, Error<PC::Error>> {
+    ) -> Result<Boolean<CF>, Error<PC::Error>>
+    where
+        <SVN as CryptographicSpongeVar<CF, S>>::Parameters: CryptographicSpongeParameters,
+    {
         let cs = index_pvk
             .cs
             .clone()
@@ -145,7 +150,10 @@ where
         index_vk: &IndexVerifierKeyVar<F, CF, S, PC, PCG>,
         public_input: &[NonNativeFieldVar<F, CF>],
         proof: &ProofVar<F, CF, S, PC, PCG>,
-    ) -> Result<Boolean<CF>, Error<PC::Error>> {
+    ) -> Result<Boolean<CF>, Error<PC::Error>>
+    where
+        <SVN as CryptographicSpongeVar<CF, S>>::Parameters: CryptographicSpongeParameters,
+    {
         let index_pvk = PreparedIndexVerifierKeyVar::<F, CF, S, SVN, PC, PCG>::prepare(&index_vk)?;
         Self::prepared_verify(&index_pvk, public_input, proof)
     }

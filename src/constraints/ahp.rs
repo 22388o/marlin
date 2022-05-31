@@ -1,11 +1,12 @@
 use crate::{
-    ahp::{CryptographicSpongeVarNonNative, Error},
+    ahp::Error,
     constraints::{
         data_structures::{PreparedIndexVerifierKeyVar, ProofVar},
         lagrange_interpolation::LagrangeInterpolationVar,
         polynomial::AlgebraForAHP,
     },
-    PhantomData, PrimeField, String, ToString, Vec,
+    sponge::CryptographicSpongeVarNonNative,
+    CryptographicSpongeParameters, PhantomData, PrimeField, String, ToString, Vec,
 };
 use ark_nonnative_field::NonNativeFieldVar;
 use ark_poly::univariate::DensePolynomial;
@@ -83,6 +84,7 @@ impl<
 where
     PCG::VerifierKeyVar: ToConstraintFieldGadget<CF>,
     PCG::CommitmentVar: ToConstraintFieldGadget<CF>,
+    <SVN as CryptographicSpongeVar<CF, S>>::Parameters: CryptographicSpongeParameters,
 {
     /// Output the first message and next round state.
     #[tracing::instrument(target = "r1cs", skip(sponge_var, comms))]

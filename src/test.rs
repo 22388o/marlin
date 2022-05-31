@@ -121,18 +121,13 @@ mod marlin {
     use ark_ff::UniformRand;
     use ark_poly::univariate::DensePolynomial;
     use ark_poly_commit::marlin_pc::MarlinKZG10;
-    use ark_std::ops::MulAssign;
+    use ark_sponge::poseidon::PoseidonSponge;
+    use ark_std::{ops::MulAssign, rand::SeedableRng};
     use blake2::Blake2s;
+    use rand_chacha::ChaChaRng;
 
     type MultiPC = MarlinKZG10<Bls12_381, DensePolynomial<Fr>, PoseidonSponge<Fr>>;
-    type MarlinInst = Marlin<
-        Fr,
-        Fq,
-        PoseidonSponge<Fr>,
-        MultiPC,
-        FiatShamirChaChaRng<Fr, Fq, Blake2s>,
-        MarlinDefaultConfig,
-    >;
+    type MarlinInst = Marlin<Fr, Fq, PoseidonSponge<Fr>, MultiPC, MarlinDefaultConfig>;
 
     fn test_circuit(num_constraints: usize, num_variables: usize) {
         let rng = &mut ark_std::test_rng();
@@ -160,10 +155,14 @@ mod marlin {
             let proof = MarlinInst::prove(&index_pk, circ, rng).unwrap();
             println!("Called prover");
 
-            assert!(MarlinInst::verify(&index_vk, &[c, d], &proof).unwrap());
+            let rng = &mut ChaChaRng::seed_from_u64(0xbeef);
+
+            assert!(MarlinInst::verify(&index_vk, &[c, d], &proof, Some(rng)).unwrap());
+
             println!("Called verifier");
             println!("\nShould not verify (i.e. verifier messages should print below):");
-            assert!(!MarlinInst::verify(&index_vk, &[a, a], &proof).unwrap());
+
+            assert!(!MarlinInst::verify(&index_vk, &[a, a], &proof, Some(rng)).unwrap());
         }
     }
 
@@ -218,17 +217,13 @@ mod marlin_recursion {
     use ark_mnt6_298::MNT6_298;
     use ark_poly::polynomial::univariate::DensePolynomial;
     use ark_poly_commit::marlin_pc::MarlinKZG10;
+    use ark_sponge::poseidon::PoseidonSponge;
+    use ark_std::rand::SeedableRng;
     use core::ops::MulAssign;
+    use rand_chacha::ChaChaRng;
 
     type MultiPC = MarlinKZG10<MNT4_298, DensePolynomial<Fr>, PoseidonSponge<Fr>>;
-    type MarlinInst = Marlin<
-        Fr,
-        Fq,
-        PoseidonSponge<Fr>,
-        MultiPC,
-        FiatShamirAlgebraicSpongeRng<Fr, Fq, PoseidonSponge<Fq>>,
-        MarlinRecursiveConfig,
-    >;
+    type MarlinInst = Marlin<Fr, Fq, PoseidonSponge<Fr>, MultiPC, MarlinRecursiveConfig>;
 
     #[derive(Copy, Clone, Debug)]
     struct MNT298Cycle;
@@ -267,10 +262,14 @@ mod marlin_recursion {
             let proof = MarlinInst::prove(&index_pk, circ, rng).unwrap();
             println!("Called prover");
 
-            assert!(MarlinInst::verify(&index_vk, &[c, d], &proof).unwrap());
+            let rng = &mut ChaChaRng::seed_from_u64(0xbeef);
+
+            assert!(MarlinInst::verify(&index_vk, &[c, d], &proof, Some(rng)).unwrap());
+
             println!("Called verifier");
             println!("\nShould not verify (i.e. verifier messages should print below):");
-            assert!(!MarlinInst::verify(&index_vk, &[a, a], &proof).unwrap());
+
+            assert!(!MarlinInst::verify(&index_vk, &[a, a], &proof, Some(rng)).unwrap());
         }
     }
 
@@ -336,12 +335,16 @@ mod marlin_recursion {
             inputs.push(Fr::from(i));
         }
 
-        assert!(MarlinInst::verify(&index_vk, &inputs, &proof).unwrap());
+        let rng = &mut ChaChaRng::seed_from_u64(0xbeef);
+
+        assert!(MarlinInst::verify(&index_vk, &inputs, &proof, Some(rng)).unwrap());
+
         println!("Called verifier");
     }
 }
 
 mod fiat_shamir {
+    /*
     use ark_ff::PrimeField;
     use ark_mnt4_298::{Fq, Fr};
     use ark_nonnative_field::params::OptimizationType;
@@ -515,4 +518,5 @@ mod fiat_shamir {
         }
         assert!(cs.is_satisfied().unwrap());
     }
+    */
 }

@@ -7,17 +7,16 @@
 //! is the same as the number of constraints (i.e., where the constraint
 //! matrices are square). Furthermore, Marlin only supports instances where the
 //! public inputs are of size one less than a power of 2 (i.e., 2^n - 1).
-#![deny(unused_import_braces, unused_qualifications, trivial_casts)]
-#![deny(trivial_numeric_casts, private_in_public)]
-#![deny(stable_features, unreachable_pub, non_shorthand_field_patterns)]
-#![deny(unused_attributes, unused_imports, unused_mut)]
-#![deny(renamed_and_removed_lints, stable_features, unused_allocation)]
-#![deny(unused_comparisons, bare_trait_objects, unused_must_use, const_err)]
-#![forbid(unsafe_code)]
-#![allow(clippy::op_ref)]
+//#![deny(unused_import_braces, unused_qualifications, trivial_casts)]
+//#![deny(trivial_numeric_casts, private_in_public)]
+//#![deny(stable_features, unreachable_pub, non_shorthand_field_patterns)]
+//#![deny(unused_attributes, unused_imports, unused_mut)]
+//#![deny(renamed_and_removed_lints, stable_features, unused_allocation)]
+//#![deny(unused_comparisons, bare_trait_objects, unused_must_use, const_err)]
+//#![forbid(unsafe_code)]
+//#![allow(clippy::op_ref)]
 
 use crate::ahp::prover::ProverMsg;
-use ahp::CryptographicSpongeWithDefault;
 use ark_ff::{to_bytes, PrimeField, ToConstraintField};
 use ark_poly::{univariate::DensePolynomial, EvaluationDomain, GeneralEvaluationDomain};
 use ark_poly_commit::{
@@ -58,6 +57,9 @@ pub mod constraints;
 pub mod ahp;
 pub use ahp::{AHPForR1CS, EvaluationsProvider};
 
+pub mod sponge;
+pub use sponge::{CryptographicSpongeParameters, CryptographicSpongeWithRate};
+
 #[cfg(test)]
 mod test;
 
@@ -97,26 +99,32 @@ pub struct Marlin<
 fn compute_vk_hash<F, FSF, S, PC>(vk: &IndexVerifierKey<F, S, PC>) -> Vec<FSF>
 where
     F: PrimeField,
-    FSF: PrimeField,
-    S: CryptographicSpongeWithDefault,
+    FSF: PrimeField + Absorb,
+    S: CryptographicSpongeWithRate,
     PC: PolynomialCommitment<F, DensePolynomial<F>, S>,
-    PC::Commitment: ToConstraintField<FSF> + Absorb,
+    PC::Commitment: ToConstraintField<FSF>,
+    <S as CryptographicSponge>::Parameters: CryptographicSpongeParameters,
 {
-    let params = S::default_params();
-    let mut vk_hash_rng = S::new(&params);
-    vk_hash_rng.absorb(&vk.index_comms);
+    let sponge_rate = 4;
+    let mut vk_hash_rng = S::from_rate(sponge_rate);
+
+    vk.index_comms
+        .iter()
+        .filter_map(|c| c.to_field_elements())
+        .for_each(|elem| vk_hash_rng.absorb(&elem));
+
     vk_hash_rng.squeeze_field_elements(1)
 }
 
 impl<F: PrimeField, FSF: PrimeField, S, PC, MC: MarlinConfig> Marlin<F, FSF, S, PC, MC>
 where
-    S: CryptographicSpongeWithDefault,
+    S: CryptographicSpongeWithRate,
     F: Absorb,
     FSF: Absorb,
     PC: PolynomialCommitment<F, DensePolynomial<F>, S>,
     PC::VerifierKey: ToConstraintField<FSF>,
-    PC::Commitment: ToConstraintField<FSF> + Absorb,
-    LabeledCommitment<<PC as PolynomialCommitment<F, DensePolynomial<F>, S>>::Commitment>: Absorb,
+    PC::Commitment: ToConstraintField<FSF>,
+    <S as CryptographicSponge>::Parameters: CryptographicSpongeParameters,
 {
     /// The personalization string for this protocol. Used to personalize the
     /// Fiat-Shamir rng.
@@ -326,14 +334,14 @@ where
         let prover_init_state = AHPForR1CS::prover_init(&index_pk.index, c)?;
         let public_input = prover_init_state.public_input();
 
-        let params = S::default_params();
-        let mut sponge = S::new(&params);
+        let sponge_rate = 4;
+        let mut sponge = S::from_rate(sponge_rate);
 
         let hiding = !for_recursion;
 
         if for_recursion {
             sponge.absorb(&to_bytes![&Self::PROTOCOL_NAME].unwrap());
-            sponge.absorb(&compute_vk_hash::<F, FSF, S, PC>(&index_pk.index_vk));
+            //sponge.absorb(&compute_vk_hash::<F, FSF, S, PC>(&index_pk.index_vk));
             sponge.absorb(&public_input);
         } else {
             sponge.absorb(
@@ -357,7 +365,13 @@ where
         end_timer!(first_round_comm_time);
 
         if for_recursion {
-            sponge.absorb(&first_comms);
+            /*
+            first_comms
+                .iter()
+                .filter_map(|c| c.to_field_elements())
+                .for_each(|elem| sponge.absorb(&elem));
+            */
+
             match prover_first_msg.clone() {
                 ProverMsg::EmptyMessage => (),
                 ProverMsg::FieldElements(v) => sponge.absorb(&v),
@@ -386,7 +400,13 @@ where
         end_timer!(second_round_comm_time);
 
         if for_recursion {
-            sponge.absorb(&second_comms);
+            /*
+            second_comms
+                .iter()
+                .filter_map(|c| c.to_field_elements())
+                .for_each(|elem| sponge.absorb(&elem));
+            */
+
             match prover_second_msg.clone() {
                 ProverMsg::EmptyMessage => (),
                 ProverMsg::FieldElements(v) => sponge.absorb(&v),
@@ -414,7 +434,13 @@ where
         end_timer!(third_round_comm_time);
 
         if for_recursion {
-            sponge.absorb(&third_comms);
+            /*
+            third_comms
+                .iter()
+                .filter_map(|c| c.to_field_elements())
+                .for_each(|elem| sponge.absorb(&elem));
+            */
+
             match prover_third_msg.clone() {
                 ProverMsg::EmptyMessage => (),
                 ProverMsg::FieldElements(v) => sponge.absorb(&v),
@@ -531,8 +557,8 @@ where
             sponge.absorb(&to_bytes![&evaluations].unwrap());
         }
 
-        let params = S::default_params();
-        let sponge = S::new(&params);
+        let sponge_rate = 4;
+        let sponge = S::from_rate(sponge_rate);
 
         let mut opening_challenges = ChallengeGenerator::<F, _>::new_multivariate(sponge);
 
@@ -584,12 +610,12 @@ where
 
         let for_recursion = MC::FOR_RECURSION;
 
-        let params = S::default_params();
-        let mut sponge = S::new(&params);
+        let sponge_rate = 4;
+        let mut sponge = S::from_rate(sponge_rate);
 
         if for_recursion {
             sponge.absorb(&to_bytes![&Self::PROTOCOL_NAME].unwrap());
-            sponge.absorb(&compute_vk_hash::<F, FSF, S, PC>(index_vk));
+            //sponge.absorb(&compute_vk_hash::<F, FSF, S, PC>(index_vk));
             sponge.absorb(&public_input);
         } else {
             sponge.absorb(&to_bytes![&Self::PROTOCOL_NAME, &index_vk, &public_input].unwrap());
@@ -599,7 +625,13 @@ where
         // First round
         let first_comms = &proof.commitments[0];
         if for_recursion {
-            sponge.absorb(&first_comms);
+            /*
+            first_comms
+                .iter()
+                .filter_map(|c| c.to_field_elements())
+                .for_each(|elem| sponge.absorb(&elem));
+            */
+
             match proof.prover_messages[0].clone() {
                 ProverMsg::EmptyMessage => (),
                 ProverMsg::FieldElements(v) => sponge.absorb(&v),
@@ -617,7 +649,13 @@ where
         let second_comms = &proof.commitments[1];
 
         if for_recursion {
-            sponge.absorb(&second_comms);
+            /*
+            second_comms
+                .iter()
+                .filter_map(|c| c.to_field_elements())
+                .for_each(|elem| sponge.absorb(&elem));
+            */
+
             match proof.prover_messages[1].clone() {
                 ProverMsg::EmptyMessage => (),
                 ProverMsg::FieldElements(v) => sponge.absorb(&v),
@@ -635,7 +673,13 @@ where
         let third_comms = &proof.commitments[2];
 
         if for_recursion {
-            sponge.absorb(&third_comms);
+            /*
+            third_comms
+                .iter()
+                .filter_map(|c| c.to_field_elements())
+                .for_each(|elem| sponge.absorb(&elem));
+            */
+
             match proof.prover_messages[2].clone() {
                 ProverMsg::EmptyMessage => (),
                 ProverMsg::FieldElements(v) => sponge.absorb(&v),
@@ -709,8 +753,9 @@ where
             for_recursion,
         )?;
 
-        let params = S::default_params();
-        let mut opening_challenges = ChallengeGenerator::<F, _>::new_multivariate(S::new(&params));
+        let sponge_rate = 4;
+        let sponge = S::from_rate(sponge_rate);
+        let mut opening_challenges = ChallengeGenerator::<F, _>::new_multivariate(sponge);
 
         let evaluations_are_correct = PC::check_combinations(
             &index_vk.verifier_key,

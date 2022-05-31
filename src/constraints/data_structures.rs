@@ -1,10 +1,11 @@
 use crate::ahp::prover::ProverMsg;
-use crate::ahp::{CryptographicSpongeVarNonNative, CryptographicSpongeWithDefault};
+use crate::sponge::CryptographicSpongeVarNonNative;
 use crate::{
     constraints::verifier::Marlin as MarlinVerifierVar,
     data_structures::{IndexVerifierKey, PreparedIndexVerifierKey, Proof},
     PrimeField, String, SynthesisError, ToString, Vec,
 };
+use crate::{CryptographicSpongeParameters, CryptographicSpongeWithRate};
 use ark_ff::{to_bytes, ToConstraintField};
 use ark_nonnative_field::NonNativeFieldVar;
 use ark_poly::univariate::DensePolynomial;
@@ -17,6 +18,7 @@ use ark_r1cs_std::{
     R1CSVar, ToBytesGadget, ToConstraintFieldGadget,
 };
 use ark_relations::r1cs::{ConstraintSystemRef, Namespace};
+use ark_sponge::constraints::CryptographicSpongeVar;
 use ark_sponge::{Absorb, CryptographicSponge};
 use ark_std::borrow::Borrow;
 use hashbrown::HashMap;
@@ -146,10 +148,12 @@ impl<
 impl<
         F: PrimeField,
         CF: PrimeField,
-        S: CryptographicSpongeWithDefault,
+        S: CryptographicSpongeWithRate,
         PC: PolynomialCommitment<F, DensePolynomial<F>, S>,
         PCG: PCCheckVar<F, DensePolynomial<F>, PC, CF, S>,
     > Clone for IndexVerifierKeyVar<F, CF, S, PC, PCG>
+where
+    <S as CryptographicSponge>::Parameters: CryptographicSpongeParameters,
 {
     fn clone(&self) -> Self {
         Self {
@@ -181,7 +185,7 @@ pub struct PreparedIndexVerifierKeyVar<
     F: PrimeField,
     CF: PrimeField,
     S: CryptographicSponge,
-    SVN: CryptographicSpongeVarNonNative<F, CF, S>,
+    SV: CryptographicSpongeVar<CF, S>,
     PC: PolynomialCommitment<F, DensePolynomial<F>, S>,
     PCG: PCCheckVar<F, DensePolynomial<F>, PC, CF, S>,
 > {
@@ -192,17 +196,17 @@ pub struct PreparedIndexVerifierKeyVar<
     pub domain_k_size_gadget: FpVar<CF>,
     pub prepared_index_comms: Vec<PCG::PreparedCommitmentVar>,
     pub prepared_verifier_key: PCG::PreparedVerifierKeyVar,
-    pub sponge_var: SVN,
+    pub sponge_var: SV,
 }
 
 impl<
         F: PrimeField,
         CF: PrimeField,
         S: CryptographicSponge,
-        SVN: CryptographicSpongeVarNonNative<F, CF, S>,
+        SV: CryptographicSpongeVar<CF, S>,
         PC: PolynomialCommitment<F, DensePolynomial<F>, S>,
         PCG: PCCheckVar<F, DensePolynomial<F>, PC, CF, S>,
-    > Clone for PreparedIndexVerifierKeyVar<F, CF, S, SVN, PC, PCG>
+    > Clone for PreparedIndexVerifierKeyVar<F, CF, S, SV, PC, PCG>
 {
     fn clone(&self) -> Self {
         PreparedIndexVerifierKeyVar {
@@ -222,20 +226,23 @@ impl<F, CF, S, SVN, PC, PCG> PreparedIndexVerifierKeyVar<F, CF, S, SVN, PC, PCG>
 where
     F: PrimeField,
     CF: PrimeField + Absorb,
-    S: CryptographicSpongeWithDefault,
+    S: CryptographicSpongeWithRate,
     SVN: CryptographicSpongeVarNonNative<F, CF, S>,
     PC: PolynomialCommitment<F, DensePolynomial<F>, S>,
     PCG: PCCheckVar<F, DensePolynomial<F>, PC, CF, S>,
     PCG::VerifierKeyVar: ToConstraintFieldGadget<CF>,
     PCG::CommitmentVar: ToConstraintFieldGadget<CF>,
+    <S as CryptographicSponge>::Parameters: CryptographicSpongeParameters,
+    <SVN as CryptographicSpongeVar<CF, S>>::Parameters: CryptographicSpongeParameters,
 {
     #[tracing::instrument(target = "r1cs", skip(vk))]
     pub fn prepare(vk: &IndexVerifierKeyVar<F, CF, S, PC, PCG>) -> Result<Self, SynthesisError> {
         let cs = vk.cs();
-        let params = S::default_params();
+
+        let sponge_rate = 4;
 
         let index_vk_hash = {
-            let mut vk_hash = S::new(&params);
+            let mut vk_hash = S::from_rate(sponge_rate);
 
             let mut vk_elems = Vec::<CF>::new();
             vk.index_comms.iter().for_each(|index_comm| {
@@ -257,14 +264,13 @@ where
             .unwrap()
         };
 
-        let params = S::default_params();
-        let mut sponge = S::new(&params);
+        let mut sponge = S::from_rate(sponge_rate);
 
         sponge.absorb(&to_bytes![&MarlinVerifierVar::<F, CF, S, PC, PCG>::PROTOCOL_NAME].unwrap());
 
         // FIXME Original call was `R::constant`
-        let params_var = SVN::default_params();
-        let mut sponge_var = SVN::new(cs, &params_var);
+        let sponge_rate = 4;
+        let mut sponge_var = SVN::from_rate(cs, sponge_rate);
 
         sponge_var.absorb(&index_vk_hash)?;
 
@@ -293,7 +299,7 @@ impl<F, CF, S, SVN, PC, PCG> AllocVar<PreparedIndexVerifierKey<F, S, PC>, CF>
 where
     F: PrimeField,
     CF: PrimeField + Absorb,
-    S: CryptographicSpongeWithDefault,
+    S: CryptographicSpongeWithRate,
     SVN: CryptographicSpongeVarNonNative<F, CF, S>,
     PC: PolynomialCommitment<F, DensePolynomial<F>, S>,
     PCG: PCCheckVar<F, DensePolynomial<F>, PC, CF, S>,
@@ -301,6 +307,8 @@ where
     PC::Commitment: ToConstraintField<CF>,
     PCG::VerifierKeyVar: ToConstraintFieldGadget<CF>,
     PCG::CommitmentVar: ToConstraintFieldGadget<CF>,
+    <S as CryptographicSponge>::Parameters: CryptographicSpongeParameters,
+    <SVN as CryptographicSpongeVar<CF, S>>::Parameters: CryptographicSpongeParameters,
 {
     #[tracing::instrument(target = "r1cs", skip(cs, f))]
     fn new_variable<T>(
@@ -337,9 +345,10 @@ where
             vk_elems.append(&mut index_comm.to_field_elements().unwrap());
         });
 
+        let sponge_rate = 4;
+
         let index_vk_hash = {
-            let params = S::default_params();
-            let mut vk_hash_rng = S::new(&params);
+            let mut vk_hash_rng = S::from_rate(sponge_rate);
 
             vk_hash_rng.absorb(&vk_elems);
 
@@ -351,14 +360,13 @@ where
             .unwrap()
         };
 
-        let params = S::default_params();
-        let mut sponge = S::new(&params);
+        let mut sponge = S::from_rate(sponge_rate);
 
         sponge.absorb(&to_bytes![&MarlinVerifierVar::<F, CF, S, PC, PCG>::PROTOCOL_NAME].unwrap());
 
         // FIXME Original call was `R::constant`
-        let params_var = SVN::default_params();
-        let mut sponge_var = SVN::new(cs.clone(), &params_var);
+        let sponge_rate = 4;
+        let mut sponge_var = SVN::from_rate(cs.clone(), sponge_rate);
 
         sponge_var.absorb(&index_vk_hash)?;
 
