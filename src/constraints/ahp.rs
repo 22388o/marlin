@@ -8,7 +8,7 @@ use crate::{
     sponge::CryptographicSpongeVarNonNative,
     CryptographicSpongeParameters, PhantomData, PrimeField, String, ToString, Vec,
 };
-use ark_nonnative_field::NonNativeFieldVar;
+use ark_nonnative_field::{params::OptimizationType, NonNativeFieldVar};
 use ark_poly::univariate::DensePolynomial;
 use ark_poly_commit::{
     EvaluationsVar, LCTerm, LabeledPointVar, LinearCombinationCoeffVar, LinearCombinationVar,
@@ -103,7 +103,7 @@ where
                 elems.append(&mut comm.to_constraint_field().unwrap());
             });
             sponge_var.absorb(&elems)?;
-            sponge_var.absorb_nonnative(&message)?;
+            sponge_var.absorb_nonnative(&message, OptimizationType::Weight)?;
         }
 
         // obtain four elements from the sponge_var
@@ -153,7 +153,7 @@ where
                 elems.append(&mut comm.to_constraint_field().unwrap());
             });
             sponge_var.absorb(&elems)?;
-            sponge_var.absorb_nonnative(&message)?;
+            sponge_var.absorb_nonnative(&message, OptimizationType::Weight)?;
         }
 
         // obtain one element from the sponge_var
@@ -195,7 +195,7 @@ where
                 elems.append(&mut comm.to_constraint_field().unwrap());
             });
             sponge_var.absorb(&elems)?;
-            sponge_var.absorb_nonnative(&message)?;
+            sponge_var.absorb_nonnative(&message, OptimizationType::Weight)?;
         }
 
         // obtain one element from the sponge_var

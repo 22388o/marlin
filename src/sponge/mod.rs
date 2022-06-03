@@ -1,5 +1,5 @@
 use ark_ff::PrimeField;
-use ark_nonnative_field::NonNativeFieldVar;
+use ark_nonnative_field::{params::OptimizationType, NonNativeFieldVar};
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
 use ark_sponge::{
     constraints::CryptographicSpongeVar, poseidon::PoseidonSponge, CryptographicSponge,
@@ -45,5 +45,6 @@ where
     fn absorb_nonnative(
         &mut self,
         input: &[NonNativeFieldVar<F, CF>],
+        ty: OptimizationType,
     ) -> Result<(), SynthesisError>;
 }

@@ -45,6 +45,11 @@ macro_rules! eprintln {
     ($($arg: tt)*) => {};
 }
 
+/// Implements a Fiat-Shamir based Rng that allows one to incrementally update
+/// the seed based on new messages in the proof transcript.
+pub mod fiat_shamir;
+pub use crate::fiat_shamir::{FiatShamirChaChaRng, FiatShamirRng};
+
 mod error;
 pub use error::*;
 

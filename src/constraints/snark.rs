@@ -8,8 +8,8 @@ use crate::{
     CryptographicSpongeWithRate,
 };
 use crate::{
-    Box, CryptographicSpongeParameters, IndexProverKey, IndexVerifierKey, Marlin, MarlinConfig,
-    PreparedIndexVerifierKey, Proof, String, ToString, UniversalSRS, Vec,
+    Box, CryptographicSpongeParameters, FiatShamirRng, IndexProverKey, IndexVerifierKey, Marlin,
+    MarlinConfig, PreparedIndexVerifierKey, Proof, String, ToString, UniversalSRS, Vec,
 };
 use ark_crypto_primitives::snark::{
     constraints::{SNARKGadget, UniversalSetupSNARKGadget},
@@ -157,7 +157,11 @@ where
     }
 
     fn verify(vk: &Self::VerifyingKey, x: &[F], proof: &Self::Proof) -> Result<bool, Self::Error> {
-        match Marlin::<F, FSF, S, PC, MC>::verify::<OptionalRng<ChaChaRng>>(vk, x, proof, None) {
+        // TODO define a rate
+        let rate = 4;
+        let mut rng: FiatShamirRng<F, FSF, S> = FiatShamirRng::new(rate);
+
+        match Marlin::<F, FSF, S, PC, MC>::verify(vk, x, proof, Some(&mut rng)) {
             Ok(res) => Ok(res),
             Err(e) => Err(Box::new(MarlinError::from(e))),
         }
@@ -513,11 +517,11 @@ mod test {
             "The native verification check fails."
         );
 
-        /*
         let cs_sys = ConstraintSystem::<MNT4Fq>::new();
         let cs = ConstraintSystemRef::new(cs_sys);
         cs.set_optimization_goal(OptimizationGoal::Weight);
 
+        /*
         let input_gadget = <TestSNARKGadget as SNARKGadget<
             <MNT4_298 as PairingEngine>::Fr,
             <MNT4_298 as PairingEngine>::Fq,

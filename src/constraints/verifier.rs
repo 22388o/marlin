@@ -5,7 +5,7 @@ use crate::{
     CryptographicSpongeParameters, CryptographicSpongeWithRate, Error, PhantomData, PrimeField,
     String, Vec,
 };
-use ark_nonnative_field::NonNativeFieldVar;
+use ark_nonnative_field::{params::OptimizationType, NonNativeFieldVar};
 use ark_poly::univariate::DensePolynomial;
 use ark_poly_commit::{PCCheckRandomDataVar, PCCheckVar, PolynomialCommitment};
 use ark_r1cs_std::{bits::boolean::Boolean, fields::FieldVar, R1CSVar, ToConstraintFieldGadget};
@@ -59,7 +59,7 @@ where
 
         eprintln!("before AHP: constraints: {}", cs.num_constraints());
 
-        sponge_var.absorb_nonnative(&public_input)?;
+        sponge_var.absorb_nonnative(&public_input, OptimizationType::Weight)?;
 
         let (_, verifier_state) = AHPForR1CS::<F, CF, S, SVN, PC, PCG>::verifier_first_round(
             index_pvk.domain_h_size,
@@ -116,7 +116,7 @@ where
             }
         }
 
-        sponge_var.absorb_nonnative(&evals_vec)?;
+        sponge_var.absorb_nonnative(&evals_vec, OptimizationType::Weight)?;
 
         let (opening_challenges, opening_challenges_bits) =
             sponge_var.squeeze_nonnative_field_elements(num_opening_challenges)?;
